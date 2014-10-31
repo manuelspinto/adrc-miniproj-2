@@ -49,24 +49,20 @@ void new_link(int asn, int neighborn, int rel, AS_node **hash_table){
 }
 #endif
 
-/*
- * Imprime uma lista de ASes com as seguintes informaçoes: AS_num, lista de customers, lista de peers, lista de providers
- */
-
 void print_AS_table(AS_node ** AS_table){
   
   AS_node * aux;
   AS_neighbor * n;
   int i;
   
-  for(i = 0; i < 127; i++){	/*percorre a AS_table*/
-    for(aux = AS_table[i]; aux != NULL; aux = aux->next){	/*percorre as ASes de cada posição da AS_table*/
-	printf("ASN = %d: \n\tcustomers: ", aux->AS_num);	/*imprime AS_num da AS*/
-	for(n = aux->customers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de customers da AS*/
+  for(i = 0; i < 127; i++){
+    for(aux = AS_table[i]; aux != NULL; aux = aux->next){
+	printf("ASN = %d: \n\tcustomers: ", aux->AS_num);
+	for(n = aux->customers; n != NULL; n = n->next) printf("%d ", n->num);
 	printf("\n\tpeers: ");
-	for(n = aux->peers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de peers da AS*/
+	for(n = aux->peers; n != NULL; n = n->next) printf("%d ", n->num);
 	printf("\n\tproviders: ");
-	for(n = aux->providers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de providers da AS*/
+	for(n = aux->providers; n != NULL; n = n->next) printf("%d ", n->num);
 	printf("\n");
     }
       
@@ -75,30 +71,30 @@ void print_AS_table(AS_node ** AS_table){
   return;
 }
 
-/*
- * Insere na AS_tabel a informação de uma linha do ficheiro de entrada
- */
 
 void new_link(int asn, int neighborn, int rel, AS_node ** AS_table){
 	int index;
 	AS_node *as;
 	AS_neighbor *neighbor;
 
-	/* cria o vizinho (head do link) */
+	/* criar vizinho */
 	neighbor = AS_neighbor_new(neighborn);
 
-	/* percorre a lista de ASes na posiçao index da AS_table para descobrir se a AS (tail do link) existe na AS_table*/
+	/* descobrir se a AS existe na AS_table*/
 	index = asn % 127;
+
 	for(as = AS_table[index]; (as != NULL) && (as->AS_num != asn) ; as = as->next);
 	  
 	/*se a AS não existe ainda na AS_table, então vamos criá-la e inseri-la*/
+	
 	if(as == NULL){
 	  AS_table[index] = AS_node_new();
 	  AS_table[index]->AS_num = asn;
 	  as = AS_table[index];
 	}
 	
-	/* dependendo da relaçao rel, insere um customer/peer/provider na lista correspondente da AS*/
+	/* inserir a informação sobre o novo link na AS_table*/
+	
 	switch (rel) {
 	case 1:
 	  neighbor->next = as->customers;
