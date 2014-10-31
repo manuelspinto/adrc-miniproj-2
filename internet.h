@@ -20,3 +20,8 @@ typedef struct asnode{
 
 } AS_node;
 
+void new_link(int asn, int neighborn, int rel, AS_node ** hash_table);
+
+AS_neighbor * AS_neighbor_new(int num);
+
+AS_node * AS_node_new(void);
