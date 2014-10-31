@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "internet.h"
 
 
@@ -49,6 +50,23 @@ void new_link(int asn, int neighborn, int rel, AS_node **hash_table){
 }
 #endif
 
+char * append_AS(char * AS_path, int asn){
+  
+  /*aloca uma nova string com espaço para a string AS_path + ' -> ' + asn */
+  char * new_path = (char*) malloc ((strlen(AS_path) + 10) * sizeof(char));
+  
+  /*cria a nova string com o novo AS_path */
+  sprintf(new_path, "%s -> %d", AS_path, asn);
+  
+  /*liberta a string que guarda o AS_path antigo*/
+  free(AS_path);
+  
+  return new_path;
+  
+}
+
+
+
 /*
  * Imprime uma lista de ASes com as seguintes informaçoes: AS_num, lista de customers, lista de peers, lista de providers
  */
@@ -76,7 +94,7 @@ void print_AS_table(AS_node ** AS_table){
 }
 
 /*
- * Insere na AS_tabel a informação de uma linha do ficheiro de entrada
+ * Insere na AS_table a informação de uma linha do ficheiro de entrada
  */
 
 void new_link(int asn, int neighborn, int rel, AS_node ** AS_table){
