@@ -152,9 +152,6 @@ int len_AS_path(AS_neighbor *AS_path){
 	int i = 0;
 	AS_neighbor *p;
 
-	if(AS_path == NULL)
-		return 99999999; 
-
 	for(p = AS_path; p != NULL ; p = p->next)
 		i++;
 
@@ -229,7 +226,8 @@ void new_link(int asn, int neighborn, int rel, AS_node ** AS_table){
 
 	/* percorre a lista de ASes na posiçao index da AS_table para descobrir se a AS (tail do link) existe na AS_table*/
 	index = asn % 127;
-	for(as = AS_table[index]; (as != NULL) && (as->AS_num != asn) ; as = as->next);
+	/*for(as = AS_table[index]; (as != NULL) && (as->AS_num != asn) ; as = as->next);*/
+	as = get_AS(asn, AS_table);
 	  
 	/*se a AS não existe ainda na AS_table, então vamos criá-la e inseri-la*/
 	if(as == NULL){
@@ -303,26 +301,38 @@ void print_AS_path(AS_neighbor *path, AS_node **AS_table){
 	AS_neighbor *p;
 	int rel;
 
+	rel = path->num; /* primeiro elemento da lista indica o tipo de rota */
+
 	printf("AS_path: ");
-	if(path == NULL)
+	if(rel == 0)
 		printf("NO ROUTE\n");
 	else{
-		rel = rel_AS_neighbor(path->num, path->next->num, AS_table);
-		if(rel == 1)
+		if(rel == 3)
 			printf("(Provider Route) ");
 		else if(rel == 2)
 			printf("(P2P Route) ");
 		else
 			printf("(Customer Route) ");
 
-
-		for(p = path; p != NULL; p = p->next)
+		for(p = path->next; p != NULL; p = p->next)
 			printf("%d -> ",p->num);
 		printf("\n");
 	}
 }
 
-void find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neighbor **AS_path){
+void cmp_AS_path2(AS_neighbor **AS_path, AS_node **AS_table){
+
+	if(AS_path[FINAL] == NULL) cpy_AS_path(AS_path);
+	
+	else if(len_AS_path(AS_path[NEW]) < len_AS_path(AS_path[FINAL])){
+	  free_AS_path(AS_path[FINAL]);
+	  cpy_AS_path(AS_path);
+	}
+	return;
+}
+
+
+int find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neighbor **AS_path){
 	AS_node *AS;
 	AS_neighbor *n;
 
@@ -333,7 +343,7 @@ void find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neig
 		if(n->num != from){
 			append_AS(AS_path, n->num);
 			if(n->num == dest){
-				cmp_AS_path(AS_path, AS_table);
+				cmp_AS_path2(AS_path, AS_table);
 				remove_last_AS(AS_path);
 			}
 			else
@@ -341,14 +351,19 @@ void find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neig
 		}
 	}
 
-	/* Se nó anterior é customer*/
-	if(rel == 3){ 
+	if(AS_path[FINAL] != NULL){
+	  remove_last_AS(AS_path);
+	  return 1;
+	}
+	
+	if(rel == 3){
+		
 		/* For each peer */
 		for(n = AS->peers; n != NULL; n = n->next){
 			if(n->num != from){
 				append_AS(AS_path, n->num);
 				if(n->num == dest){
-					cmp_AS_path(AS_path, AS_table);
+					cmp_AS_path2(AS_path, AS_table);
 					remove_last_AS(AS_path);
 				}
 				else
@@ -356,33 +371,48 @@ void find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neig
 			}
 		}
 
+		if(AS_path[FINAL] != NULL){
+		  remove_last_AS(AS_path);
+		  return 2;
+		}
+	  
 		/* For each provider */
 		for(n = AS->providers; n != NULL; n = n->next){
 			if(n->num != from){
 				append_AS(AS_path, n->num);
 				if(n->num == dest){
-					cmp_AS_path(AS_path, AS_table);
+					cmp_AS_path2(AS_path, AS_table);
 					remove_last_AS(AS_path);
 				}
 				else
 					find_alg(this, n->num, dest, 3, AS_table, AS_path);
 			}
 		}
+		
+		if(AS_path[FINAL] != NULL){
+		  remove_last_AS(AS_path);
+		  return 3;
+		}
 	}
-
+	
 	remove_last_AS(AS_path);
+	return 0;
 }
 
 AS_neighbor *AS_find_path(int asn_s, int asn_d, AS_node **AS_table){
 	AS_neighbor **AS_path = (AS_neighbor **) malloc (2 * sizeof(AS_neighbor *));
-
+	AS_neighbor *new_root;
+	
 	AS_path[FINAL] = NULL;
 	AS_path[NEW] = NULL;
 
 	append_AS(AS_path, asn_s);
-	find_alg(-1, asn_s, asn_d, 3, AS_table, AS_path);
+	
+	new_root = AS_neighbor_new(find_alg(-1, asn_s, asn_d, 3, AS_table, AS_path));
+	new_root->next = AS_path[FINAL];
+	AS_path[FINAL] = new_root;
+	
 	free_AS_path(AS_path[NEW]);
-
 
 	return AS_path[FINAL];
 }

@@ -36,5 +36,5 @@ int len_AS_path(AS_neighbor *AS_path);
 void free_AS_path(AS_neighbor *AS_path);
 void cpy_AS_path(AS_neighbor **AS_path);
 AS_neighbor *AS_find_path(int asn_s, int asn_d, AS_node **AS_table);
-void find_alg(int from, int this, int dest, int relation, AS_node **AS_table, AS_neighbor **AS_path);
+int find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neighbor **AS_path);
 int rel_AS_neighbor(int source, int neighbor, AS_node **AS_table);
