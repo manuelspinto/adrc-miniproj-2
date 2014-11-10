@@ -95,59 +95,6 @@ void remove_last_AS(AS_neighbor **AS_path){
 	AS_path[NEW] = new_root;
 }
 
-int rel_AS_neighbor(int source, int neighbor, AS_node **AS_table){
-	AS_node *p;
-	AS_neighbor *n;
-
-	p = get_AS(source, AS_table);
-
-	for(n = p->customers; n != NULL ; n = n->next)
-		if(n->num == neighbor)
-			return 3;
-	
-	for(n = p->peers; n != NULL ; n = n->next)
-		if(n->num == neighbor)
-			return 2;
-
-	for(n = p->providers; n != NULL ; n = n->next)
-		if(n->num == neighbor)
-			return 1;
-
-		return -1;
-}
-
-/* Compara dois caminhos e subtitui no final se o tamanho do novo for melhor */
-void cmp_AS_path(AS_neighbor **AS_path, AS_node **AS_table){
-	int type_final;
-	int type_new;
-	AS_neighbor *p;
-
-	if(AS_path[FINAL] == NULL)
-		type_final = -1;
-	else
-		type_final = rel_AS_neighbor(AS_path[FINAL]->num, AS_path[FINAL]->next->num, AS_table);
-
-	for(p = AS_path[NEW]; p->next->next != NULL; p = p->next);
-	type_new = rel_AS_neighbor(p->next->num,p->num, AS_table);
-
-
-	if((type_final == 3 && type_new == 3) || 
-		 (type_final == 2 && type_new == 2) ||
-		 (type_final == 1 && type_new == 1)){
-		if(len_AS_path(AS_path[FINAL]) > len_AS_path(AS_path[NEW])){
-			free_AS_path(AS_path[FINAL]);
-			cpy_AS_path(AS_path);
-			type_final = type_new;
-		}
-	}else if((type_final == 2 && type_new == 3) ||
-					 (type_final == 1) || 
-					 	type_final == -1){
-		free_AS_path(AS_path[FINAL]);
-		cpy_AS_path(AS_path);
-		type_final = type_new;
-	}
-}
-
 int len_AS_path(AS_neighbor *AS_path){
 	int i = 0;
 	AS_neighbor *p;
@@ -196,17 +143,17 @@ void print_AS_table(AS_node ** AS_table){
   AS_neighbor * n;
   int i;
   
-  for(i = 0; i < 127; i++){	/*percorre a AS_table*/
-    for(aux = AS_table[i]; aux != NULL; aux = aux->next){	/*percorre as ASes de cada posição da AS_table*/
-		printf("ASN = %d: \n\tcustomers: ", aux->AS_num);	/*imprime AS_num da AS*/
-		for(n = aux->customers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de customers da AS*/
-		printf("\n\tpeers: ");
-		for(n = aux->peers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de peers da AS*/
-		printf("\n\tproviders: ");
-		for(n = aux->providers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de providers da AS*/
-		printf("\n");
-    }
-      
+  for(i = 0; i < 65536; i++){	/*percorre a AS_table*/
+    if(AS_table[i] != NULL){
+    	aux = AS_table[i];
+			printf("ASN = %d: \n\tcustomers: ", i);	/*imprime AS_num da AS*/
+			for(n = aux->customers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de customers da AS*/
+			printf("\n\tpeers: ");
+			for(n = aux->peers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de peers da AS*/
+			printf("\n\tproviders: ");
+			for(n = aux->providers; n != NULL; n = n->next) printf("%d ", n->num);	/*imprime a lista de providers da AS*/
+			printf("\n");
+		}
   }
   
   return;
@@ -217,7 +164,6 @@ void print_AS_table(AS_node ** AS_table){
  */
 
 void new_link(int asn, int neighborn, int rel, AS_node ** AS_table){
-	int index;
 	AS_node *as;
 	AS_neighbor *neighbor;
 
@@ -225,17 +171,13 @@ void new_link(int asn, int neighborn, int rel, AS_node ** AS_table){
 	neighbor = AS_neighbor_new(neighborn);
 
 	/* percorre a lista de ASes na posiçao index da AS_table para descobrir se a AS (tail do link) existe na AS_table*/
-	index = asn % 127;
 	/*for(as = AS_table[index]; (as != NULL) && (as->AS_num != asn) ; as = as->next);*/
-	as = get_AS(asn, AS_table);
 	  
 	/*se a AS não existe ainda na AS_table, então vamos criá-la e inseri-la*/
-	if(as == NULL){
-	  as = AS_node_new();
-	  as->AS_num = asn;
-	  as->next = AS_table[index];
-	  AS_table[index] = as;
-	}
+	if(AS_table[asn] == NULL)
+	  AS_table[asn] = AS_node_new();
+	
+	as = AS_table[asn];
 	
 	/* dependendo da relaçao rel, insere um customer/peer/provider na lista correspondente da AS*/
 	switch (rel) {
@@ -278,23 +220,11 @@ AS_neighbor * AS_neighbor_new(int num){
 AS_node * AS_node_new(void){
   AS_node *new = (AS_node *) malloc(sizeof(AS_node));
 
-  new->AS_num = 0;
-  new->next = NULL;
   new->peers = NULL;
   new->customers = NULL;
   new->providers = NULL;
 
   return new;
-}
-
-AS_node *get_AS(int asn, AS_node **AS_table){
-	AS_node *AS;
-
-	for(AS = AS_table[asn % 127]; AS != NULL; AS = AS->next)
-		if(AS->AS_num == asn)
-			break;
-
-	return AS;
 }
 
 void print_AS_path(AS_neighbor *path, AS_node **AS_table){
@@ -336,7 +266,7 @@ int find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neigh
 	AS_node *AS;
 	AS_neighbor *n;
 
-	AS = get_AS(this, AS_table);
+	AS = AS_table[this];
 
 	/* For each customer */
 	for(n = AS->customers; n != NULL; n = n->next){
@@ -419,12 +349,30 @@ AS_neighbor *AS_find_path(int asn_s, int asn_d, AS_node **AS_table){
 
 int main(int argc, char *argv[]){
 	int i, s, d;
+	int asn1, asn2, rel;
 	AS_neighbor *AS_path;
+	FILE *fp;
+	char buff[128];
 
-	AS_node ** AS_table = (AS_node **) malloc (127 * sizeof(AS_node *));
-	for(i = 0; i<127;i++) /* O MAC não mete por defeito os ponteiros alocados a NULL e sem isto dá-me seg_fault na verificação de NULL da print_AS_table, depois pode-se apagar */
+	if(argc != 2){
+		printf("./internet network_file.txt\n");
+		exit(1);
+	}
+
+	AS_node ** AS_table = (AS_node **) malloc (65536 * sizeof(AS_node *));
+	for(i = 0; i<65536;i++) /* O MAC não mete por defeito os ponteiros alocados a NULL e sem isto dá-me seg_fault na verificação de NULL da print_AS_table, depois pode-se apagar */
 		AS_table[i] = NULL;
 
+	fp = fopen(argv[1],"r");
+  if(fp == NULL){
+    printf("ERROR: Impossivel abrir o ficheiro '%s'\n",argv[1]);
+    exit(1);
+  }
+  
+  while (fgets(buff, sizeof(buff), fp) != NULL ){
+    sscanf(buff,"%d\t%d\t%d",&asn1,&asn2,&rel);
+    new_link(asn1,asn2,rel,AS_table);
+  }
 
 	/*new_link(4323, 12122, 1, AS_table);
 	new_link(12122, 4323, 3, AS_table);
@@ -433,7 +381,7 @@ int main(int argc, char *argv[]){
 	new_link(29017, 34309, 2, AS_table);
 	new_link(34309, 29017, 2, AS_table);*/
 
-	new_link(1, 2, 1, AS_table);
+	/*new_link(1, 2, 1, AS_table);
 	new_link(2, 1, 3, AS_table);
 	new_link(7, 1, 1, AS_table);
 	new_link(1, 7, 3, AS_table);
@@ -449,15 +397,15 @@ int main(int argc, char *argv[]){
 	new_link(1, 4, 2, AS_table);
 	new_link(7, 6, 2, AS_table);
 	new_link(6, 7, 2, AS_table);
+	print_AS_table(AS_table);*/
 
-	print_AS_table(AS_table);
 
 	while(1){
 		printf("[Source] [Dest]: ");
 		scanf("%d %d",&s,&d);
 		AS_path = AS_find_path(s , d, AS_table);
 		print_AS_path(AS_path, AS_table);
-	}
+	} 
 	
 	return 0;
 }

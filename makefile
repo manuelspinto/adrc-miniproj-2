@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-g -c -Wall -pedantic
+CFLAGS=-O3 -c -Wall -pedantic
 LIBS=-lm
 
 default: internet
