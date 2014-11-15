@@ -1,138 +1,604 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <math.h>
+#include <time.h>
 #include "internet.h"
 
-#define NEW 1
-#define FINAL 0
-
+#define AS_card 65536
+#define zero 0
+#define C 1
+#define R 2
+#define P 3
+#define inf 4
 
 #if 0
-AS_node * AS_node_new(int asn, int neighbor, int rel){
-  AS_node *new = (AS_node *) malloc(sizeof(AS_node));
+/*Não usada para já*/
+/*Função que remove do conjunto set_to_visit o nó selected_node*/
+AS_neighbor * remove_node(int selected_node, AS_neighbor * set_to_visit){
 
-  AS_node->AS_num = asn;
+	AS_neighbor * aux, * remove;
+	
+	printf("vou remover: %d\n", selected_node);
+	/*Encontrar na lista o nó a remover*/
+	for(remove = set_to_visit; remove->num != selected_node; remove = remove->next);
+	
+	/*Se o nó a remover for o primeiro elemento:*/
+	if(remove == set_to_visit){
+		set_to_visit = remove->next;
+	}
+	
+	/*Caso contrário:*/
+	else{
+		/*Encontrar o nó anterior aquele que vamos remover*/
+		for(aux = set_to_visit; aux->next != remove; aux = aux->next);
+		aux->next = remove->next;
+	}
+	free(remove);
 
-
-  return new;
+	return set_to_visit;
 }
 #endif
 
 #if 0
-void new_link(int asn, int neighborn, int rel, AS_node **hash_table){
-	int index;
-	AS_node *aux;
-	AS_neighbor *neighbor;
+/*Não usada para já*/
+/*Função que determina o tipo de rota entre o nó origin e o nó dest*/
+int elected_route(int origin, int dest, AS_node ** AS_table){
+	
+	int est[AS_card]; /*estimativa do tipo de caminho com que a AS[i] chega a AS dest*/
+	int i, selected_node, selected_est;
+	AS_neighbor * set_to_visit, * aux;
 
-	/* criar vizinho */
-	neighbor = AS_neighbor_new(neighborn);
-
-
-	/* verificar se a AS existe na hash_table*/
-	index = asn % 127;
-
-	for(aux = hash_table[index]; aux != NULL ; aux = aux->next){
-		if(aux->AS_num == asn){
-			if(rel == 1){
-				neighbor->next = aux->customers;
-				aux->customers = neighbor;
+	/*Inicializar o vector de estimativas a inifinito para todos os nós, excepto o destino que fica com estimativa zero*/
+	/*Criar o set_to_visit com todos os nós excepto o destino*/
+	set_to_visit = NULL;
+	for(i = 0; i < AS_card; i++){
+		if(i != dest){
+			est[i] = inf;
+			if(AS_table[i] != NULL){
+				aux = AS_neighbor_new(i);
+				aux->next = set_to_visit;
+				set_to_visit = aux;
 			}
-			else if(rel == 2){
-				neighbor->next = aux->peers;
-				aux->peers = neighbor;
-			}
-			else{
-				neighbor->next = aux->providers;
-				aux->providers = neighbor;
+		}
+		else est[i] = zero;
+	}
+
+	/*Para cada vizinho de dest, actualizar a est*/
+	
+	for(aux = AS_table[dest]->customers; aux != NULL; aux = aux->next) est[aux->num] = P;
+	for(aux = AS_table[dest]->peers; aux != NULL; aux = aux->next) est[aux->num] = R;
+	for(aux = AS_table[dest]->providers; aux != NULL; aux = aux->next) est[aux->num] = C;
+
+	/*Iterar a actualizaçao de estimativas para todos os nós até todos os nos terem sido visitados
+	ou ate sabermos que se chega da origin até dest por um customer path (C)*/
+
+	while(set_to_visit != NULL && est[origin] > C){
+	
+		/*Encontrar o/um nó que chega a dest com o mínimo custo possível*/
+		selected_node = 0;
+		selected_est = inf;
+		for(aux = set_to_visit; aux != NULL; aux = aux->next){
+			if(est[aux->num] < selected_est){
+				selected_node = aux->num;
+				selected_est = est[aux->num];
 			}
 		}
 
+		/*Se encontrarmos um nó no passo anterior e a sua est for menor que inf vamos actualizar as est dos vizinhos desse nó*/
+		if(selected_est < inf){
+			
+			/*Retirar o nó do set_to_visit*/
+			set_to_visit = remove_node(selected_node, set_to_visit);
+			
+			/*Percorrer os vizinhos e actualizar as suas est*/
+			/*Os customers do nó seleccionado podem chegar a dest por um caminho P*/
+			for(aux = AS_table[selected_node]->customers; aux != NULL; aux = aux->next)
+				if(est[aux->num] > P) est[aux->num] = P;
+			
+			/*Se o nó seleccionado chegar a dest por um caminho C, propaga essa info para os seus peers e providers*/
+			if(selected_est == C){
+
+				/*Os peers do nó seleccionado podem chegar a dest por um caminho R*/
+				for(aux = AS_table[selected_node]->peers; aux != NULL; aux = aux->next)
+					if(est[aux->num] > R) est[aux->num] = R;
+
+				/*Os providers do nó seleccionado podem chegar a dest por um caminho C*/
+				for(aux = AS_table[selected_node]->providers; aux != NULL; aux = aux->next)
+					if(est[aux->num] > C) est[aux->num] = C;
+
+			}
+		}
+
+		/*Se nenhum nó chegar a dest com menos de inf, então não há caminho entre origin e dest
+		e já não queremos visitar mais nós*/		
+		else while(set_to_visit != NULL) remove_node(set_to_visit->num, set_to_visit);
 	}
 
-
+	return est[origin];
 }
 #endif
 
+/*NOVO*/
+/*Cria um nó do tipo AS_tree_node*/
+AS_tree_node * AS_tree_node_new(int asn){
+
+	AS_tree_node * new = (AS_tree_node *) malloc (sizeof (AS_tree_node));
+	
+	new->asn = asn;
+	new->next = NULL;
+	new->left = NULL;
+	new->right = NULL;
+	
+	return new;
+}
+
+/*NOVO*/
+/*Imprime uma árvore binária. Usada para verificar a árvore*/
+void preorder_print(AS_tree_node * root){
+	
+	if(root != NULL){
+		printf("asn: %d\n", root->asn);
+		preorder_print(root->left);
+		preorder_print(root->right);
+	}
+	
+	return;
+}
 
 #if 0
-char * append_AS(char * AS_path, int asn){
-  
-  /*aloca uma nova string com espaço para a string AS_path + ' -> ' + asn */
-  char * new_path = (char*) malloc ((strlen(AS_path) + 10) * sizeof(char));
-  
-  /*cria a nova string com o novo AS_path */
-  sprintf(new_path, "%s -> %d", AS_path, asn);
-  
-  /*liberta a string que guarda o AS_path antigo*/
-  free(AS_path);
-  
-  return new_path;
-  
+void insert_to_BST(AS_tree_node *root, int asn){
+	AS_tree_node *aux;
+	if(root == NULL)
+		root = AS_tree_node_new(asn);
+	else{
+		aux = root;
+		while(1){
+			if(aux->asn < asn){
+				if(aux->left == NULL){
+					aux->right = AS_tree_node_new(asn);
+					break;
+				}
+				else
+					aux = aux->left;
+			}
+			else {
+				if(aux->right == NULL){
+					aux->right = AS_tree_node_new(asn);
+					break;
+				}
+				else
+					aux = aux->right;
+			}
+		}
+	}
+	return;
 }
-
 #endif
 
+void AS_tree_insert(AS_tree_node **root, int asn){
+	AS_tree_node *node;
 
-/* Insere um AS no AS_path. A inserção é feita no início de uma lista */ 
-void append_AS(AS_neighbor **AS_path, int asn){
-	AS_neighbor *new_root;
-	new_root = AS_neighbor_new(asn);
+	node = search_node(*root,NULL,asn);
 
-	if(AS_path[NEW] != NULL)
-	  new_root->next = AS_path[NEW];
-	AS_path[NEW] = new_root;
-}
-
-
-/* Remove o AS do AS_PATH 
- A estratégia de inserção e remoção na lista é LIFO por isso basta retirar o primeiro elemento */
-
-void remove_last_AS(AS_neighbor **AS_path){
-	AS_neighbor *new_root;
-	new_root = AS_path[NEW]->next;
-
-	free(AS_path[NEW]);
-	AS_path[NEW] = new_root;
-}
-
-int len_AS_path(AS_neighbor *AS_path){
-	int i = 0;
-	AS_neighbor *p;
-
-	for(p = AS_path; p != NULL ; p = p->next)
-		i++;
-
-	return i;
-}
-
-void free_AS_path(AS_neighbor *AS_path){
-	AS_neighbor *p;
-	AS_neighbor *pnext;
-
-	if(AS_path == NULL)
+	if(node == NULL){
+		*root = AS_tree_node_new(asn);
+		printf("Insert: %d\n",asn);
+		preorder_print(*root);
 		return;
-	for(p = AS_path, pnext = AS_path->next; pnext != NULL; pnext = pnext->next){
-		free(p);
-		p = pnext;
 	}
-	free(p);
+
+	if(asn < node->asn)
+		node->left = AS_tree_node_new(asn);
+	else
+		node->right = AS_tree_node_new(asn);
+
+	printf("Insert: %d\n",asn);
+	preorder_print(*root);
 
 	return;
 }
 
-void cpy_AS_path(AS_neighbor **AS_path){
-	AS_neighbor *new_root = NULL;
-	AS_neighbor *p;
-	AS_neighbor *p_new;
+void AS_tree_remove(AS_tree_node **root, int asn){
+	AS_tree_node *node, *parent, *successor;
 
-	for(p = AS_path[NEW]; p != NULL; p = p->next){
-		p_new = AS_neighbor_new(p->num);
-		p_new->next = new_root;
-		new_root = p_new;
+	node = search_node(*root,&parent,asn);
+
+	if(parent == NULL){
+		if(node->left == NULL){
+			if(node->right == NULL)
+				*root = NULL;
+			else
+				*root = node->right;
+
+			printf("Remove_1: %d\n",asn);
+			preorder_print(*root);
+
+			free(node);
+			return;
+		}
+		else if(node->right == NULL){
+			*root = node->left;
+			printf("Remove_1: %d\n",asn);
+			preorder_print(*root);
+
+			free(node);
+			return;
+		}
 	}
-	AS_path[FINAL] = new_root;
+
+
+
+
+	if((node->left != NULL) && (node->right != NULL)){
+		successor = node->right;
+		parent = node;
+		while(successor->left != NULL){
+			parent = successor;
+			successor = successor->left;
+		}
+
+		node->asn = successor->asn;
+		node = successor;
+	}
+
+	if(parent->left == node){
+		if(node->left == NULL)
+			parent->left = node->right;
+		else
+			parent->left = node->left;
+	}else{
+		if(node->left == NULL)
+			parent->right = node->right;
+		else
+			parent->right = node->left;
+	}
+	free(node);
+
+	printf("Remove: %d\n",asn);
+	preorder_print(*root);
 }
 
+AS_tree_node *search_node(AS_tree_node *root, AS_tree_node **parent, int asn){
+	
+	if(root == NULL)
+		return NULL;
+	if(root->asn == asn){
+		*parent = NULL;
+		return root;
+	}
+
+	while(1){
+		if(asn < root->asn){
+			if(root->left != NULL){
+				if(root->left->asn == asn){
+					*parent = root;
+					return root->left;
+				}else
+					root = root->left;
+			}else{
+				return root;
+			}
+		}else{
+			if(root->right != NULL){
+				if(root->right->asn == asn){
+					*parent = root;
+					return root->right;
+				}else
+					root = root->right;
+			}else{
+				return root;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+
+
+
+/*NOVO*/
+/*Transforma uma lista que tem incício em first, numa árvore binária com raíz em root (valor do meio da lista)*/
+void list_to_tree(AS_tree_node * root, AS_tree_node * first, int n){
+
+	float nr, nl;
+	int i;
+	AS_tree_node * aux = first;
+	
+	nr = ceil(((float) n / 2.0) - 1);
+	nl = floor ((float) n / 2.0);
+	
+	if(first == root) return;
+	
+	/*avançar até metade da lista esquerda e selccionar esse nó como filho esquerdo da raiz*/
+	for(i = 0; i < (int) floor(nl / 2.0); i++) aux = aux->next;
+	root->left = aux;
+	
+	/*avançar até metade da lista direita e selccionar esse nó como direito da raiz*/
+	aux = root->next;
+	for(i = 0; i < (int) floor(nr / 2.0); i++) aux = aux->next;
+	root->right = aux;
+	
+	aux = root->next;
+	root->next = NULL;
+	
+	list_to_tree(root->left, first, nl);
+	list_to_tree(root->right, aux, nr);
+	
+	return;
+
+}
+
+
+/*Em manutenção*/
+/*Calcula a rota entre o nó origem e dest*/
+/*Por agora faz:
+- cria o set to visit como uma lista a partir de set_to_visit[inf]
+- transforma essa lista numa arvore. set_to_visit[inf] aponta para a raiz da arvore
+- imprime a árvore
+-(tenho o resto escrito num papel :p) */
+int elected_route_new(int origin, int dest, AS_node ** AS_table){
+
+	int est[AS_card];
+	int i, as_count = 0;
+	int selected_est = inf;
+	int selected_node = 0;
+
+	AS_tree_node ** set_to_visit, * aux, * root;
+	AS_neighbor *aux_n;
+	
+	set_to_visit = (AS_tree_node **) malloc(5 * sizeof(AS_tree_node *)); 
+	
+	for(i = AS_card - 1; i >= 0; i--){
+		if(i != dest){
+			est[i] = inf;
+			
+			if(AS_table[i] != NULL){
+				aux = AS_tree_node_new(i);
+				aux->next = set_to_visit[inf];
+				set_to_visit[inf] = aux;
+				as_count++;
+			}
+		}
+		else est[i] = zero;
+	}
+	
+	root = set_to_visit[inf];
+	for(i = 0; i < floor ((float) as_count / 2.0); i++) root = root->next;
+	
+	list_to_tree(root, set_to_visit[inf], as_count);
+	set_to_visit[inf] = root;
+	preorder_print(set_to_visit[inf]);
+
+	/* Actualizar as estimativas dos clientes do nó 'dest' */
+	for(aux_n = AS_table[dest]->customers; aux_n != NULL ; aux_n = aux_n->next){
+		est[aux_n->num] = P;
+		AS_tree_remove(&set_to_visit[inf], aux_n->num);
+		AS_tree_insert(&set_to_visit[P], aux_n->num);
+		selected_est = P;
+	}
+
+	/* Actualizar as estimativas dos peers do nó 'dest' */
+	for(aux_n = AS_table[dest]->peers; aux_n != NULL ; aux_n = aux_n->next){
+		est[aux_n->num] = R;
+		AS_tree_remove(&set_to_visit[inf], aux_n->num);
+		AS_tree_insert(&set_to_visit[R], aux_n->num);
+		selected_est = R;
+	}
+	/* Actualizar as estimativas dos providers do nó 'dest' */
+	for(aux_n = AS_table[dest]->providers; aux_n != NULL ; aux_n = aux_n->next){
+		est[aux_n->num] = C;
+		AS_tree_remove(&set_to_visit[inf], aux_n->num);
+		AS_tree_insert(&set_to_visit[C], aux_n->num);
+		selected_est = C;
+	}
+
+	while(set_to_visit_empty(set_to_visit) == 0 && best_est_found(set_to_visit, est[origin]) == 0){
+		selected_est = inf;
+
+		/* Encontrar um nó que chegue ao destino com a minima estimativa possivel */
+		if(set_to_visit[C] != NULL){
+			selected_node = AS_tree_rand_remove(&set_to_visit[C]);
+			selected_est = C;
+		} else if(set_to_visit[R] != NULL){
+			selected_node = AS_tree_rand_remove(&set_to_visit[R]);
+			selected_est = R;
+		} else if(set_to_visit[P] != NULL){
+			selected_node = AS_tree_rand_remove(&set_to_visit[P]);
+			selected_est = P;
+		}
+
+		/* Percorrer os vizinhos do selected node e actualizar as estimativas */
+		if(selected_est < inf){
+			for(aux_n = AS_table[selected_node]->customers; aux_n != NULL ; aux_n = aux_n->next){
+				est[aux_n->num] = P;
+				AS_tree_remove(&set_to_visit[inf], aux_n->num);
+				AS_tree_insert(&set_to_visit[P], aux_n->num);
+			}
+
+			if(selected_est == C){
+				for(aux_n = AS_table[selected_node]->peers; aux_n != NULL ; aux_n = aux_n->next){
+					if(est[aux_n->num] == inf) AS_tree_remove(&set_to_visit[inf], aux_n->num);
+					else AS_tree_remove(&set_to_visit[P], aux_n->num);
+					est[aux_n->num] = R;
+					AS_tree_insert(&set_to_visit[R], aux_n->num);
+				}
+				for(aux_n = AS_table[selected_node]->providers; aux_n != NULL ; aux_n = aux_n->next){
+					if(est[aux_n->num] == inf) AS_tree_remove(&set_to_visit[inf], aux_n->num);
+					else if(est[aux_n->num] == P) AS_tree_remove(&set_to_visit[P], aux_n->num);
+					else AS_tree_remove(&set_to_visit[R], aux_n->num);
+
+					est[aux_n->num] = C;
+					AS_tree_insert(&set_to_visit[C], aux_n->num);
+				}
+			}
+		}
+	}
+	
+	/*
+	preorder_print(set_to_visit[inf]);
+	AS_tree_remove(set_to_visit[inf],2);
+	printf("\n");
+	preorder_print(set_to_visit[inf]);
+	AS_tree_insert(set_to_visit[inf],2);
+	printf("\n");
+	preorder_print(set_to_visit[inf]);
+	AS_tree_remove(set_to_visit[inf],4);
+	printf("\n");
+	preorder_print(set_to_visit[inf]);*/
+
+	
+	return est[origin];
+}
+
+int set_to_visit_empty(AS_tree_node **set_to_visit){
+	if(set_to_visit[C] == NULL && set_to_visit[R] == NULL 
+		&& set_to_visit[P] == NULL && set_to_visit[inf] == NULL) return 1;
+	return 0;
+}
+
+int best_est_found(AS_tree_node **set_to_visit, int est){
+	if(est == C) return 1;
+	if(set_to_visit[C] != NULL && est > C) return 0;
+	if(set_to_visit[R] != NULL && est > R) return 0;
+	if(set_to_visit[P] != NULL && est > P) return 0;
+
+	return 1;
+}
+
+int AS_tree_rand_remove(AS_tree_node **root){
+	AS_tree_node *node, *parent;
+	int asn;
+
+	node = *root;
+	parent = node;
+	if(node->left == NULL && node->right == NULL){
+		asn = node->asn;
+		free(node);
+		root = NULL;
+		printf("RandRemove: %d\n",asn);
+		preorder_print(*root);
+		return asn;
+	}
+
+
+	if(node->right == NULL)
+		node = node->left;
+	else if(node->left == NULL)
+		node = node->right;
+	else{
+		if(rand()%2 == 0)
+			node = node->left;
+		else
+			node = node->right;
+	}
+
+
+	while(node->left != NULL || node->right != NULL){
+		parent = node;
+		if(node->left == NULL)
+			node = node->right;
+		else if(node->right == NULL)
+			node = node->left;
+		else if(rand()%2 == 0)
+			node = node->left;
+		else
+			node = node->right;
+	}
+
+	/* cheguei à folha que quero remover */
+	asn = node->asn;
+	if(parent->asn > asn) parent->left = NULL;
+	else parent->right = NULL;
+	free(node);
+
+	printf("RandRemove: %d\n",asn);
+	preorder_print(*root);
+
+	return asn;
+}
+
+
+
+#if 0
+/*ignorar*/
+/*Função que determina o tipo de rota entre o nó origin e o nó dest*/
+int elected_route_new(int origin, int dest, AS_node ** AS_table){
+	
+	int est[AS_card]; /*estimativa do tipo de caminho com que a AS[i] chega a AS dest*/
+	int i, selected_node, selected_est;
+	AS_neighbor * set_to_visit, * aux;
+
+	/*Inicializar o vector de estimativas a inifinito para todos os nós, excepto o destino que fica com estimativa zero*/
+	/*Criar o set_to_visit com todos os nós excepto o destino*/
+	set_to_visit = NULL;
+	for(i = 0; i < AS_card; i++){
+		if(i != dest){
+			est[i] = inf;
+			if(AS_table[i] != NULL){
+				aux = AS_neighbor_new(i);
+				aux->next = set_to_visit;
+				set_to_visit = aux;
+			}
+		}
+		else est[i] = zero;
+	}
+
+	/*Para cada vizinho de dest, actualizar a est*/
+	
+	for(aux = AS_table[dest]->customers; aux != NULL; aux = aux->next) est[aux->num] = P;
+	for(aux = AS_table[dest]->peers; aux != NULL; aux = aux->next) est[aux->num] = R;
+	for(aux = AS_table[dest]->providers; aux != NULL; aux = aux->next) est[aux->num] = C;
+
+	/*Iterar a actualizaçao de estimativas para todos os nós até todos os nos terem sido visitados
+	ou ate sabermos que se chega da origin até dest por um customer path (C)*/
+
+	while(set_to_visit != NULL && est[origin] > C){
+	
+		/*Encontrar o/um nó que chega a dest com o mínimo custo possível*/
+		selected_node = 0;
+		selected_est = inf;
+		for(aux = set_to_visit; aux != NULL; aux = aux->next){
+			if(est[aux->num] < selected_est){
+				selected_node = aux->num;
+				selected_est = est[aux->num];
+			}
+		}
+
+		/*Se encontrarmos um nó no passo anterior e a sua est for menor que inf vamos actualizar as est dos vizinhos desse nó*/
+		if(selected_est < inf){
+			
+			/*Retirar o nó do set_to_visit*/
+			set_to_visit = remove_node(selected_node, set_to_visit);
+			
+			/*Percorrer os vizinhos e actualizar as suas est*/
+			/*Os customers do nó seleccionado podem chegar a dest por um caminho P*/
+			for(aux = AS_table[selected_node]->customers; aux != NULL; aux = aux->next)
+				if(est[aux->num] > P) est[aux->num] = P;
+			
+			/*Se o nó seleccionado chegar a dest por um caminho C, propaga essa info para os seus peers e providers*/
+			if(selected_est == C){
+
+				/*Os peers do nó seleccionado podem chegar a dest por um caminho R*/
+				for(aux = AS_table[selected_node]->peers; aux != NULL; aux = aux->next)
+					if(est[aux->num] > R) est[aux->num] = R;
+
+				/*Os providers do nó seleccionado podem chegar a dest por um caminho C*/
+				for(aux = AS_table[selected_node]->providers; aux != NULL; aux = aux->next)
+					if(est[aux->num] > C) est[aux->num] = C;
+
+			}
+		}
+
+		/*Se nenhum nó chegar a dest com menos de inf, então não há caminho entre origin e dest
+		e já não queremos visitar mais nós*/		
+		else while(set_to_visit != NULL) remove_node(set_to_visit->num, set_to_visit);
+	}
+
+	return est[origin];
+}
+
+#endif
 /*
  * Imprime uma lista de ASes com as seguintes informaçoes: AS_num, lista de customers, lista de peers, lista de providers
  */
@@ -143,7 +609,7 @@ void print_AS_table(AS_node ** AS_table){
   AS_neighbor * n;
   int i;
   
-  for(i = 0; i < 65536; i++){	/*percorre a AS_table*/
+  for(i = 0; i < AS_card; i++){	/*percorre a AS_table*/
     if(AS_table[i] != NULL){
     	aux = AS_table[i];
 			printf("ASN = %d: \n\tcustomers: ", i);	/*imprime AS_num da AS*/
@@ -227,140 +693,24 @@ AS_node * AS_node_new(void){
   return new;
 }
 
-void print_AS_path(AS_neighbor *path, AS_node **AS_table){
-	AS_neighbor *p;
-	int rel;
 
-	rel = path->num; /* primeiro elemento da lista indica o tipo de rota */
-
-	printf("AS_path: ");
-	if(rel == 0)
-		printf("NO ROUTE\n");
-	else{
-		if(rel == 3)
-			printf("(Provider Route) ");
-		else if(rel == 2)
-			printf("(P2P Route) ");
-		else
-			printf("(Customer Route) ");
-
-		for(p = path->next; p != NULL; p = p->next)
-			printf("%d -> ",p->num);
-		printf("\n");
-	}
-}
-
-void cmp_AS_path2(AS_neighbor **AS_path, AS_node **AS_table){
-
-	if(AS_path[FINAL] == NULL) cpy_AS_path(AS_path);
-	
-	else if(len_AS_path(AS_path[NEW]) < len_AS_path(AS_path[FINAL])){
-	  free_AS_path(AS_path[FINAL]);
-	  cpy_AS_path(AS_path);
-	}
-	return;
-}
-
-
-int find_alg(int from, int this, int dest, int rel, AS_node **AS_table, AS_neighbor **AS_path){
-	AS_node *AS;
-	AS_neighbor *n;
-
-	AS = AS_table[this];
-
-	/* For each customer */
-	for(n = AS->customers; n != NULL; n = n->next){
-		if(n->num != from){
-			append_AS(AS_path, n->num);
-			if(n->num == dest){
-				cmp_AS_path2(AS_path, AS_table);
-				remove_last_AS(AS_path);
-			}
-			else
-				find_alg(this, n->num, dest, 1, AS_table, AS_path);
-		}
-	}
-
-	if(AS_path[FINAL] != NULL){
-	  remove_last_AS(AS_path);
-	  return 1;
-	}
-	
-	if(rel == 3){
-		
-		/* For each peer */
-		for(n = AS->peers; n != NULL; n = n->next){
-			if(n->num != from){
-				append_AS(AS_path, n->num);
-				if(n->num == dest){
-					cmp_AS_path2(AS_path, AS_table);
-					remove_last_AS(AS_path);
-				}
-				else
-					find_alg(this, n->num, dest, 2, AS_table, AS_path);
-			}
-		}
-
-		if(AS_path[FINAL] != NULL){
-		  remove_last_AS(AS_path);
-		  return 2;
-		}
-	  
-		/* For each provider */
-		for(n = AS->providers; n != NULL; n = n->next){
-			if(n->num != from){
-				append_AS(AS_path, n->num);
-				if(n->num == dest){
-					cmp_AS_path2(AS_path, AS_table);
-					remove_last_AS(AS_path);
-				}
-				else
-					find_alg(this, n->num, dest, 3, AS_table, AS_path);
-			}
-		}
-		
-		if(AS_path[FINAL] != NULL){
-		  remove_last_AS(AS_path);
-		  return 3;
-		}
-	}
-	
-	remove_last_AS(AS_path);
-	return 0;
-}
-
-AS_neighbor *AS_find_path(int asn_s, int asn_d, AS_node **AS_table){
-	AS_neighbor **AS_path = (AS_neighbor **) malloc (2 * sizeof(AS_neighbor *));
-	AS_neighbor *new_root;
-	
-	AS_path[FINAL] = NULL;
-	AS_path[NEW] = NULL;
-
-	append_AS(AS_path, asn_s);
-	
-	new_root = AS_neighbor_new(find_alg(-1, asn_s, asn_d, 3, AS_table, AS_path));
-	new_root->next = AS_path[FINAL];
-	AS_path[FINAL] = new_root;
-	
-	free_AS_path(AS_path[NEW]);
-
-	return AS_path[FINAL];
-}
 
 int main(int argc, char *argv[]){
-	int i, s, d;
+	int i;
 	int asn1, asn2, rel;
-	AS_neighbor *AS_path;
 	FILE *fp;
 	char buff[128];
+	AS_node ** AS_table;
+
+	srand(time(NULL));
 
 	if(argc != 2){
 		printf("./internet network_file.txt\n");
 		exit(1);
 	}
 
-	AS_node ** AS_table = (AS_node **) malloc (65536 * sizeof(AS_node *));
-	for(i = 0; i<65536;i++) /* O MAC não mete por defeito os ponteiros alocados a NULL e sem isto dá-me seg_fault na verificação de NULL da print_AS_table, depois pode-se apagar */
+	AS_table = (AS_node **) malloc (AS_card * sizeof(AS_node *));
+	for(i = 0; i<AS_card;i++) /* O MAC não mete por defeito os ponteiros alocados a NULL e sem isto dá-me seg_fault na verificação de NULL da print_AS_table, depois pode-se apagar */
 		AS_table[i] = NULL;
 
 	fp = fopen(argv[1],"r");
@@ -373,39 +723,18 @@ int main(int argc, char *argv[]){
     sscanf(buff,"%d\t%d\t%d",&asn1,&asn2,&rel);
     new_link(asn1,asn2,rel,AS_table);
   }
-
-	/*new_link(4323, 12122, 1, AS_table);
-	new_link(12122, 4323, 3, AS_table);
-	new_link(4323, 12249, 1, AS_table);
-	new_link(12249, 4323, 3, AS_table);
-	new_link(29017, 34309, 2, AS_table);
-	new_link(34309, 29017, 2, AS_table);*/
-
-	/*new_link(1, 2, 1, AS_table);
-	new_link(2, 1, 3, AS_table);
-	new_link(7, 1, 1, AS_table);
-	new_link(1, 7, 3, AS_table);
-	new_link(1, 3, 1, AS_table);
-	new_link(3, 1, 3, AS_table);
-	new_link(5, 3, 1, AS_table);
-	new_link(3, 5, 3, AS_table);
-	new_link(6, 5, 1, AS_table);
-	new_link(5, 6, 3, AS_table);
-	new_link(4, 2, 1, AS_table);
-	new_link(2, 4, 3, AS_table);
-	new_link(4, 1, 2, AS_table);
-	new_link(1, 4, 2, AS_table);
-	new_link(7, 6, 2, AS_table);
-	new_link(6, 7, 2, AS_table);
-	print_AS_table(AS_table);*/
-
+/*
+	print_AS_table(AS_table);
+	for(i = 1; i < 8; i++)
+		for(j = 1; j < 8; j++)
+			printf("De %d para %d: elected_route = %d\n", i, j, elected_route(i, j, AS_table));
+*/	
 
 	while(1){
 		printf("[Source] [Dest]: ");
-		scanf("%d %d",&s,&d);
-		AS_path = AS_find_path(s , d, AS_table);
-		print_AS_path(AS_path, AS_table);
-	} 
+		scanf("%d %d",&asn1,&asn2);
+		printf("Elected route: %d\n",elected_route_new(asn1, asn2, AS_table));
+	}
 	
 	return 0;
 }
